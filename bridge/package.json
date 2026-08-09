@@ -1,0 +1,9 @@
+{
+  "name": "asrs-twin-bridge",
+  "version": "1.0.0",
+  "description": "OPC UA -> WebSocket bridge for the AS/RS digital twin (S7-1500 DB_Twin -> live JSON)",
+  "main": "bridge.js",
+  "type": "commonjs",
+  "scripts": { "start": "node bridge.js" },
+  "dependencies": { "node-opcua": "^2.132.0", "ws": "^8.18.0" }
+}

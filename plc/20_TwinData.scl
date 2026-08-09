@@ -1,0 +1,136 @@
+// =====================================================================
+//  20_TwinData.scl  —  OPC UA twin data model + self-contained crane sim
+//
+//  DB_Twin holds everything the digital twin needs; the S7-1500 OPC UA
+//  server exposes these variables automatically (standard DB, accessible
+//  from HMI/OPC UA by default).
+//
+//  FB_TwinPump is a full, DEPENDENCY-FREE crane simulator:
+//    * Heartbeat + Seq tick every scan  -> liveness proof (Milestone 1)
+//    * the crane state machine is paced by a plain SCAN COUNTER (no IEC
+//      timer, no RUNTIME, no clock memory) -> generates cleanly, always
+//      advances, because the scan cycle always runs
+//    * it walks the crane through all 54 rack cells (9 cols x 6 rows) and
+//      ramps X / Z / ForkExt smoothly, clamping to target within one step
+//      so it never overshoots/oscillates
+//
+//  TUNING: STRIDE = scans per motion step.  Too fast -> raise; too slow -> lower.
+//  Generate BOTH blocks from this source; call FB_TwinPump in Main [OB1].
+// =====================================================================
+
+DATA_BLOCK "DB_Twin"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   STRUCT
+      Heartbeat  : DInt;    // increments every scan — liveness proof
+      Step       : Int;     // state-machine step (0,10,20,...,80)
+      CurCell    : Int;     // rack cell currently being served (1..54)
+      Cycles     : Int;     // completed store cycles
+      TargetPos  : DInt;    // target cell index
+      X_mm       : Real;    // aisle travel  (LOAD = -1500 .. col 8 = 8000)
+      Z_mm       : Real;    // hoist height  (row 0 = 0 .. row 5 = 7500)
+      ForkExt_mm : Real;    // fork extension (0 retracted .. 700 out)
+      Lift       : Bool;    // TRUE while carrying a pallet
+      Seq        : DInt;    // monotonic counter for freshness/replay
+   END_STRUCT;
+BEGIN
+END_DATA_BLOCK
+
+
+FUNCTION_BLOCK "FB_TwinPump"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.5
+   VAR
+      scanCnt  : DInt := 0;
+      state    : Int := 0;
+      prevSt   : Int := -1;
+      cell     : Int := 1;
+      cyc      : Int := 0;
+      dwell    : Int := 0;
+      carry    : Bool := FALSE;
+      x        : Real := 0.0;
+      z        : Real := 0.0;
+      f        : Real := 0.0;
+      tX       : Real := 0.0;
+      tZ       : Real := 0.0;
+      tF       : Real := 0.0;
+      arrived  : Bool := FALSE;
+   END_VAR
+
+   VAR_TEMP
+      colI : Int;
+      rowI : Int;
+      d    : Real;
+   END_VAR
+
+   VAR CONSTANT
+      STRIDE  : DInt := 100;
+      PITCH_X : Real := 1000.0;
+      PITCH_Z : Real := 1500.0;
+      LOAD_X  : Real := -1500.0;
+      FORK    : Real := 700.0;
+      V_X     : Real := 250.0;
+      V_Z     : Real := 180.0;
+      V_F     : Real := 140.0;
+      DWELL_N : Int  := 4;
+   END_VAR
+
+BEGIN
+   "DB_Twin".Heartbeat := "DB_Twin".Heartbeat + 1;
+   "DB_Twin".Seq       := "DB_Twin".Seq + 1;
+
+   #scanCnt := #scanCnt + 1;
+   IF #scanCnt >= #STRIDE THEN
+      #scanCnt := 0;
+
+      IF #state <> #prevSt THEN
+         #dwell   := 0;
+         #arrived := FALSE;
+      END_IF;
+      #prevSt := #state;
+
+      CASE #state OF
+         0:   #tX := #LOAD_X; #tZ := 0.0; #tF := 0.0;
+              IF #arrived THEN #state := 10; END_IF;
+         10:  #tF := #FORK;              IF #arrived THEN #state := 20; END_IF;
+         20:  #carry := TRUE;  #dwell := #dwell + 1; IF #dwell >= #DWELL_N THEN #state := 30; END_IF;
+         30:  #tF := 0.0;                IF #arrived THEN #state := 40; END_IF;
+         40:  #colI := (#cell - 1) MOD 9;
+              #rowI := (#cell - 1) / 9;
+              #tX := #PITCH_X * INT_TO_REAL(#colI);
+              #tZ := #PITCH_Z * INT_TO_REAL(#rowI);
+              IF #arrived THEN #state := 50; END_IF;
+         50:  #tF := #FORK;              IF #arrived THEN #state := 60; END_IF;
+         60:  #carry := FALSE; #dwell := #dwell + 1; IF #dwell >= #DWELL_N THEN #state := 70; END_IF;
+         70:  #tF := 0.0;                IF #arrived THEN #state := 80; END_IF;
+         80:  #cyc := #cyc + 1; #cell := #cell + 1; IF #cell > 54 THEN #cell := 1; END_IF; #state := 0;
+      END_CASE;
+
+      // clamp each axis to target within one step (never overshoot/oscillate)
+      #d := #tX - #x;
+      IF   ABS(#d) <= #V_X THEN #x := #tX;
+      ELSIF #d > 0.0        THEN #x := #x + #V_X;
+      ELSE                       #x := #x - #V_X; END_IF;
+
+      #d := #tZ - #z;
+      IF   ABS(#d) <= #V_Z THEN #z := #tZ;
+      ELSIF #d > 0.0        THEN #z := #z + #V_Z;
+      ELSE                       #z := #z - #V_Z; END_IF;
+
+      #d := #tF - #f;
+      IF   ABS(#d) <= #V_F THEN #f := #tF;
+      ELSIF #d > 0.0        THEN #f := #f + #V_F;
+      ELSE                       #f := #f - #V_F; END_IF;
+
+      #arrived := (#x = #tX) AND (#z = #tZ) AND (#f = #tF);
+   END_IF;
+
+   "DB_Twin".Step       := #state;
+   "DB_Twin".CurCell    := #cell;
+   "DB_Twin".Cycles     := #cyc;
+   "DB_Twin".TargetPos  := INT_TO_DINT(#cell);
+   "DB_Twin".X_mm       := #x;
+   "DB_Twin".Z_mm       := #z;
+   "DB_Twin".ForkExt_mm := #f;
+   "DB_Twin".Lift       := #carry;
+END_FUNCTION_BLOCK

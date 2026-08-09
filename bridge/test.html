@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><title>ASRS Bridge — Stream Test</title>
+<style>
+  body{margin:0;font-family:Segoe UI,system-ui,sans-serif;background:#0e1420;color:#e7eef7}
+  header{padding:16px 22px;border-bottom:1px solid #26344a;display:flex;gap:12px;align-items:center}
+  #dot{width:11px;height:11px;border-radius:50%;background:#ff5c6c;box-shadow:0 0 10px currentColor;color:#ff5c6c}
+  #dot.on{background:#39d98a;color:#39d98a}
+  main{padding:22px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;max-width:900px}
+  .card{background:#161f2e;border:1px solid #26344a;border-radius:10px;padding:14px 16px}
+  .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8aa0bd}
+  .v{font-size:26px;font-weight:650;margin-top:6px;font-variant-numeric:tabular-nums}
+  code{color:#4da3ff}
+</style></head><body>
+  <header><span id="dot"></span><b>ASRS bridge — live stream</b>
+    <span id="status" style="color:#8aa0bd;font-size:13px">connecting to <code>ws://localhost:4841</code>…</span></header>
+  <main id="grid"></main>
+<script>
+  const FIELDS=["heartbeat","step","curCell","cycles","targetPos","x_mm","z_mm","forkExt_mm","lift","seq"];
+  const grid=document.getElementById("grid"),cells={};
+  for(const k of FIELDS){const c=document.createElement("div");c.className="card";
+    c.innerHTML=`<div class="k">${k}</div><div class="v" id="v_${k}">–</div>`;grid.appendChild(c);cells[k]=document.getElementById("v_"+k);}
+  const dot=document.getElementById("dot"),status=document.getElementById("status");
+  function connect(){const ws=new WebSocket("ws://localhost:4841");
+    ws.onopen=()=>{dot.classList.add("on");status.textContent="connected — streaming";};
+    ws.onclose=()=>{dot.classList.remove("on");status.textContent="disconnected — retrying…";setTimeout(connect,1500);};
+    ws.onerror=()=>ws.close();
+    ws.onmessage=(e)=>{const s=JSON.parse(e.data);for(const k of FIELDS){if(s[k]==null)continue;
+      cells[k].textContent=(typeof s[k]==="number"&&!Number.isInteger(s[k]))?s[k].toFixed(0):s[k];}};}
+  connect();
+</script></body></html>

@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ASRS Digital Twin — Cyber-Physical Integrity</title>
+<style>
+  :root{ --dim:#8aa0bd; --ok:#39d98a; --bad:#ff5c6c; --acc:#4da3ff; --amber:#ffb23e; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; overflow:hidden; background:#0a0e15;
+    font-family:Segoe UI, system-ui, sans-serif; color:#e7eef7; }
+  #app{ position:fixed; inset:0; }
+  .panel{ position:fixed; padding:13px 15px; border-radius:12px;
+    background:rgba(14,20,31,.84); border:1px solid #26344a; backdrop-filter:blur(7px); }
+  #hud{ top:14px; left:14px; min-width:210px; }
+  #hud h1{ font-size:13px; margin:0 0 10px; font-weight:600; letter-spacing:.02em;
+    display:flex; align-items:center; gap:9px; }
+  #dot{ width:10px;height:10px;border-radius:50%; background:var(--bad);
+    box-shadow:0 0 9px currentColor; color:var(--bad); flex:0 0 auto; }
+  #dot.on{ background:var(--ok); color:var(--ok); }
+  #dot.demo{ background:var(--amber); color:var(--amber); }
+  .row{ display:flex; justify-content:space-between; gap:18px; font-size:12.5px; padding:3px 0; }
+  .row .k{ color:var(--dim); } .row .v{ font-variant-numeric:tabular-nums; font-weight:600; }
+  #stepname{ color:var(--acc); }
+  #modeBadge{ font-size:11px; color:var(--dim); margin-top:4px; }
+
+  #ctrls{ top:14px; right:14px; display:flex; flex-direction:column; gap:8px; width:212px; }
+  .btn{ font:inherit; font-size:12.5px; color:#e7eef7; cursor:pointer; width:100%;
+    background:#1b2740; border:1px solid #2f4160; border-radius:9px;
+    padding:8px 12px; text-align:left; transition:background .15s, border-color .15s; }
+  .btn:hover{ background:#22314e; border-color:#3f5680; }
+  .btn .st{ float:right; color:var(--dim); font-weight:600; margin-left:14px; }
+  #recBtn.on{ border-color:var(--bad); } #recBtn.on .st{ color:var(--bad); }
+  .btn.armed{ border-color:var(--bad); background:#3a1f28; } .btn.armed .st{ color:var(--bad); }
+
+  #integ{ bottom:14px; right:14px; width:290px; padding:0; overflow:hidden; }
+  #integ .hdr{ padding:11px 15px; font-size:13px; font-weight:700; letter-spacing:.02em;
+    display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #26344a; }
+  #ovBadge{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px;
+    background:rgba(57,217,138,.16); color:var(--ok); border:1px solid rgba(57,217,138,.4); }
+  #ovBadge.bad{ background:rgba(255,92,108,.16); color:var(--bad); border-color:rgba(255,92,108,.45); }
+  .chk{ display:flex; align-items:center; gap:10px; padding:9px 15px; font-size:12.5px; border-bottom:1px solid #1a2536; }
+  .chk:last-child{ border-bottom:none; }
+  .led{ width:9px;height:9px;border-radius:50%; background:var(--ok); box-shadow:0 0 7px currentColor; color:var(--ok); flex:0 0 auto; }
+  .led.bad{ background:var(--bad); color:var(--bad); }
+  .chk .nm{ flex:1; } .chk .meta{ color:var(--dim); font-variant-numeric:tabular-nums; font-size:11.5px; }
+  #residWrap{ padding:6px 15px 12px; }
+  #residLbl{ display:flex; justify-content:space-between; font-size:11px; color:var(--dim); margin-bottom:4px; }
+  #residTrack{ height:9px; background:#0b1120; border:1px solid #26344a; border-radius:5px; overflow:hidden; }
+  #residFill{ height:100%; width:0%; background:linear-gradient(90deg,var(--ok),#7ec2ff); transition:width .12s, background .2s; }
+  #residFill.bad{ background:linear-gradient(90deg,#ff7a5c,var(--bad)); }
+  #attack{ padding:10px 12px; border-top:1px solid #26344a; }
+  #attack .lab{ font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--dim); margin-bottom:7px; }
+  #attack .grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  #attack .btn{ font-size:11.5px; padding:7px 9px; text-align:center; }
+  #legend{ bottom:14px; left:14px; font-size:12px; color:var(--dim); }
+  #legend b{ color:#e7eef7; font-weight:600; }
+  #hint{ position:fixed; bottom:70px; left:14px; font-size:11.5px; color:var(--dim); }
+  #title{ position:fixed; top:14px; left:50%; transform:translateX(-50%); font-size:13px; color:var(--dim); letter-spacing:.03em; }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="title">AS/RS Digital Twin · S7-1500 → OPC UA → 3D · cyber-physical integrity</div>
+
+  <div id="hud" class="panel">
+    <h1><span id="dot"></span> ASRS Digital Twin</h1>
+    <div class="row"><span class="k">State</span><span class="v" id="stepname">—</span></div>
+    <div class="row"><span class="k">Cell</span><span class="v" id="cell">—</span></div>
+    <div class="row"><span class="k">Cycles</span><span class="v" id="cycles">—</span></div>
+    <div class="row"><span class="k">X (aisle)</span><span class="v" id="x">—</span></div>
+    <div class="row"><span class="k">Z (hoist)</span><span class="v" id="z">—</span></div>
+    <div class="row"><span class="k">Fork</span><span class="v" id="fork">—</span></div>
+    <div class="row"><span class="k">Carrying</span><span class="v" id="lift">—</span></div>
+    <div id="modeBadge">source: —</div>
+  </div>
+
+  <div id="ctrls">
+    <div class="panel" style="padding:10px; display:flex; flex-direction:column; gap:8px;">
+      <button class="btn" id="modeBtn">Source <span class="st" id="modeSt">AUTO</span></button>
+      <button class="btn" id="orbitBtn">Auto-orbit <span class="st" id="orbitSt">off</span></button>
+      <button class="btn" id="recBtn">● Record <span class="st" id="recSt">idle</span></button>
+    </div>
+  </div>
+
+  <div id="integ" class="panel">
+    <div class="hdr"><span>Cyber-Physical Integrity</span><span id="ovBadge">SECURE</span></div>
+    <div class="chk"><span class="led" id="led_ch"></span><span class="nm">Secured channel</span><span class="meta" id="m_ch">policy</span></div>
+    <div class="chk"><span class="led" id="led_fr"></span><span class="nm">Freshness / replay</span><span class="meta" id="m_fr">age</span></div>
+    <div class="chk"><span class="led" id="led_mac"></span><span class="nm">HMAC authenticity</span><span class="meta" id="m_mac">verify</span></div>
+    <div class="chk"><span class="led" id="led_res"></span><span class="nm">Physics residual</span><span class="meta" id="m_res">mm</span></div>
+    <div id="residWrap">
+      <div id="residLbl"><span>position residual</span><span id="residVal">0 mm</span></div>
+      <div id="residTrack"><div id="residFill"></div></div>
+    </div>
+    <div id="attack">
+      <div class="lab">Fault injection (attack demo)</div>
+      <div class="grid">
+        <button class="btn" id="atkSpoof">Spoof position</button>
+        <button class="btn" id="atkReplay">Replay frame</button>
+        <button class="btn" id="atkTamper">Tamper value</button>
+        <button class="btn" id="atkClear">Clear all</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="legend" class="panel" style="padding:9px 12px;">🟫 <b>stored</b> &nbsp; 🟩 <b>placed</b> &nbsp; 🔵 <b>expected pos (model)</b></div>
+  <div id="hint">drag orbit · scroll zoom · right-drag pan</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three.module.js",
+  "three/addons/": "./vendor/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const S=0.001, COLS=9, ROWS=6, NCELL=COLS*ROWS, PITCH_X=1.0, PITCH_Z=1.5, RACK_Z=1.15, LOAD_X=-1.5;
+const colOf=(c)=>(c-1)%COLS, rowOf=(c)=>Math.floor((c-1)/COLS);
+const cellX=(c)=>colOf(c)*PITCH_X, cellY=(c)=>rowOf(c)*PITCH_Z;
+
+const app=document.getElementById('app');
+const renderer=new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.08;
+app.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0a0e15);
+scene.fog=new THREE.Fog(0x0a0e15,18,40);
+const pmrem=new THREE.PMREMGenerator(renderer);
+scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+
+const camera=new THREE.PerspectiveCamera(47,innerWidth/innerHeight,0.1,200);
+camera.position.set(11,8.5,14.5);
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.autoRotateSpeed=0.7;
+controls.target.set(3.2,3.2,0); controls.maxPolarAngle=Math.PI*0.52; controls.minDistance=4; controls.maxDistance=40;
+
+scene.add(new THREE.HemisphereLight(0xcfe0ff,0x202a38,0.55));
+const key=new THREE.DirectionalLight(0xffffff,2.4); key.position.set(9,15,8); key.castShadow=true;
+key.shadow.mapSize.set(1024,1024); key.shadow.camera.left=-13; key.shadow.camera.right=17;
+key.shadow.camera.top=17; key.shadow.camera.bottom=-5; key.shadow.camera.far=70; key.shadow.bias=-0.0003; scene.add(key);
+const fillL=new THREE.DirectionalLight(0x88aaff,0.5); fillL.position.set(-8,6,-6); scene.add(fillL);
+const rimL=new THREE.DirectionalLight(0xffd9a0,0.6); rimL.position.set(-4,7,10); scene.add(rimL);
+
+const M={
+  steel:new THREE.MeshStandardMaterial({color:0x6a7a92,roughness:0.5,metalness:0.7}),
+  beam:new THREE.MeshStandardMaterial({color:0x46536a,roughness:0.6,metalness:0.6}),
+  crane:new THREE.MeshStandardMaterial({color:0xffb02e,roughness:0.45,metalness:0.4}),
+  craneDk:new THREE.MeshStandardMaterial({color:0xcf8a1e,roughness:0.5,metalness:0.4}),
+  carr:new THREE.MeshStandardMaterial({color:0xeef2f7,roughness:0.4,metalness:0.4}),
+  fork:new THREE.MeshStandardMaterial({color:0x2b3444,roughness:0.5,metalness:0.7}),
+  pallet:new THREE.MeshStandardMaterial({color:0xa9773f,roughness:0.9}),
+  boxA:new THREE.MeshStandardMaterial({color:0xc9a06a,roughness:0.85}),
+  boxB:new THREE.MeshStandardMaterial({color:0xba8f5c,roughness:0.85}),
+  empty:new THREE.MeshStandardMaterial({color:0x223049,roughness:0.9,transparent:true,opacity:0.28}),
+  floor:new THREE.MeshStandardMaterial({color:0x121926,roughness:0.95}),
+  stripe:new THREE.MeshStandardMaterial({color:0xffcf5a,roughness:0.8,emissive:0x3a2a00,emissiveIntensity:0.3}),
+};
+function box(w,h,d,mat){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.castShadow=true; m.receiveShadow=true; return m; }
+
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(70,70),M.floor);
+floor.rotation.x=-Math.PI/2; floor.position.set(4,0,0); floor.receiveShadow=true; scene.add(floor);
+const grid=new THREE.GridHelper(70,70,0x2a3a52,0x172230); grid.material.opacity=0.3; grid.material.transparent=true; grid.position.set(4,0.002,0); scene.add(grid);
+for(const zz of [-0.55,0.55]){ const st=box(11.5,0.02,0.06,M.stripe); st.position.set(3.5,0.01,zz); st.castShadow=false; scene.add(st); }
+
+function unit(kind){ const g=new THREE.Group(); const p=box(0.78,0.14,0.78,M.pallet); p.position.y=0.07; g.add(p);
+  const b=box(0.62,0.5,0.62,kind?M.boxA:M.boxB); b.position.y=0.39; g.add(b); return g; }
+
+function buildRack(zc){ const grp=new THREE.Group(); scene.add(grp); const rackH=ROWS*PITCH_Z;
+  for(let c=0;c<=COLS;c++) for(const zz of [zc-0.45,zc+0.45]){ const post=box(0.08,rackH+0.3,0.08,M.steel);
+    post.position.set(c*PITCH_X-0.5,(rackH+0.3)/2-0.15,zz); grp.add(post); }
+  for(let r=0;r<=ROWS;r++){ const beam=box(COLS*PITCH_X+0.1,0.06,0.95,M.beam);
+    beam.position.set((COLS-1)*PITCH_X/2,r*PITCH_Z-0.15,zc); grp.add(beam); } return grp; }
+const rackR=buildRack(RACK_Z); buildRack(-RACK_Z);
+
+const cellUnit={}, cellMat={}, filled=new Set(), recent=[];
+for(let cell=1;cell<=NCELL;cell++){
+  const ghost=box(0.8,0.05,0.8,M.empty); ghost.castShadow=false; ghost.position.set(cellX(cell),cellY(cell)-0.12,RACK_Z); rackR.add(ghost);
+  const u=unit(cell%2); const bmesh=u.children[1]; bmesh.material=bmesh.material.clone(); cellMat[cell]=bmesh.material;
+  u.position.set(cellX(cell),cellY(cell)-0.12,RACK_Z); u.visible=false; rackR.add(u); cellUnit[cell]=u;
+}
+for(let cell=1;cell<=NCELL;cell++){ if((cell*7)%3===0){ const u=unit(cell%2); u.position.set(cellX(cell),cellY(cell)-0.12,-RACK_Z); scene.add(u); } }
+
+const infeed=new THREE.Group(); const pad=box(1.05,0.12,1.05,M.beam); pad.position.set(LOAD_X,0.06,0); infeed.add(pad);
+const supply=unit(1); supply.position.set(LOAD_X,0.12,0); infeed.add(supply); scene.add(infeed);
+
+const craneGroup=new THREE.Group(); scene.add(craneGroup); const rackH=ROWS*PITCH_Z;
+const bogie=box(0.8,0.2,1.2,M.craneDk); bogie.position.set(0,0.1,0.16); craneGroup.add(bogie);
+for(const zz of [0,0.32]){ const mast=box(0.16,rackH+1.0,0.16,M.crane); mast.position.set(0,(rackH+1.0)/2,zz); craneGroup.add(mast); }
+const topbeam=box(0.16,0.18,0.5,M.crane); topbeam.position.set(0,rackH+0.95,0.16); craneGroup.add(topbeam);
+const carriage=new THREE.Group(); craneGroup.add(carriage);
+const carrBody=box(0.5,0.44,0.52,M.carr); carrBody.position.set(0,0,0.16); carriage.add(carrBody);
+const carrBack=box(0.54,0.5,0.06,M.craneDk); carrBack.position.set(0,0,-0.06); carriage.add(carrBack);
+const forks=new THREE.Group(); carriage.add(forks);
+const backplate=box(0.5,0.4,0.05,M.fork); backplate.position.set(0,-0.05,0.14); forks.add(backplate);
+for(const dx of [-0.16,0.16]){ const tine=box(0.08,0.06,0.95,M.fork); tine.position.set(dx,-0.2,0.5); forks.add(tine); }
+const carried=unit(1); carried.position.set(0,-0.26,0.5); carried.visible=false; forks.add(carried);
+
+const ghostMat=new THREE.MeshStandardMaterial({color:0x4da3ff,transparent:true,opacity:0.32,emissive:0x123a66,emissiveIntensity:0.6});
+const ghost=box(0.56,0.5,0.58,ghostMat); ghost.castShadow=false; scene.add(ghost);
+
+const cur={x:LOAD_X,y:0,fork:0}, tgt={x:LOAD_X,y:0,fork:0};
+let carrying=false;
+const VMAX={x:2.6,y:1.7,fork:1.3};
+const STEP_NAMES={0:'to infeed',10:'fork out (load)',20:'picking',30:'fork in (load)',40:'to cell',50:'fork out (cell)',60:'placing',70:'fork in (cell)',80:'next cell'};
+const el=(id)=>document.getElementById(id);
+function markStored(cell){ if(cell>=1&&cell<=NCELL&&!filled.has(cell)){ filled.add(cell); cellUnit[cell].visible=true; recent.push({cell,t0:performance.now()}); } }
+function apply(s){
+  if(typeof s.x_mm==='number') tgt.x=s.x_mm*S;
+  if(typeof s.z_mm==='number') tgt.y=s.z_mm*S;
+  if(typeof s.forkExt_mm==='number') tgt.fork=s.forkExt_mm*S;
+  if(typeof s.lift==='boolean') carrying=s.lift;
+  if(typeof s.step==='number' && s.step>=60) markStored(s.curCell);
+  el('stepname').textContent=(s.step in STEP_NAMES)?`${s.step} · ${STEP_NAMES[s.step]}`:s.step;
+  el('cell').textContent=s.curCell; el('cycles').textContent=s.cycles;
+  el('x').textContent=(s.x_mm??0).toFixed(0)+' mm'; el('z').textContent=(s.z_mm??0).toFixed(0)+' mm';
+  el('fork').textContent=(s.forkExt_mm??0).toFixed(0)+' mm'; el('lift').textContent=s.lift?'yes':'no';
+}
+
+const sim={ step:0,cell:1,cyc:0,carry:false,x:LOAD_X*1000,z:0,f:0,tX:LOAD_X*1000,tZ:0,tF:0,V:{x:2200,z:1400,f:1100},DWELL:0.45,dwt:0 };
+let demoSeq=0;
+function toward(c,t,v,dt){ const d=t-c,m=v*dt; return Math.abs(d)<=m?t:c+Math.sign(d)*m; }
+function arrived(){ return sim.x===sim.tX && sim.z===sim.tZ && sim.f===sim.tF; }
+function simStep(dt){ const FORK=700;
+  switch(sim.step){
+    case 0: sim.tX=LOAD_X*1000; sim.tZ=0; sim.tF=0; if(arrived()) sim.step=10; break;
+    case 10: sim.tF=FORK; if(arrived()){ sim.step=20; sim.dwt=0; } break;
+    case 20: sim.carry=true; sim.dwt+=dt; if(sim.dwt>=sim.DWELL) sim.step=30; break;
+    case 30: sim.tF=0; if(arrived()) sim.step=40; break;
+    case 40: sim.tX=colOf(sim.cell)*1000; sim.tZ=rowOf(sim.cell)*1500; if(arrived()) sim.step=50; break;
+    case 50: sim.tF=FORK; if(arrived()){ sim.step=60; sim.dwt=0; } break;
+    case 60: sim.carry=false; sim.dwt+=dt; if(sim.dwt>=sim.DWELL) sim.step=70; break;
+    case 70: sim.tF=0; if(arrived()) sim.step=80; break;
+    case 80: sim.cyc++; sim.cell++; if(sim.cell>NCELL) sim.cell=1; sim.step=0; break;
+  }
+  sim.x=toward(sim.x,sim.tX,sim.V.x,dt); sim.z=toward(sim.z,sim.tZ,sim.V.z,dt); sim.f=toward(sim.f,sim.tF,sim.V.f,dt);
+  demoSeq++;
+}
+function simState(){ return { step:sim.step,curCell:sim.cell,cycles:sim.cyc,x_mm:sim.x,z_mm:sim.z,forkExt_mm:sim.f,lift:sim.carry,seq:demoSeq }; }
+
+const SECRET='asrs-integrity-key-v1';
+const TOL=1200, SPOOF_OFFSET=3500;
+const inj={ spoof:false, replay:false, tamper:false, frozenSeq:0 };
+const mon={ mx:LOAD_X*1000, mz:0, resid:0, residT:0, residTrip:false,
+  lastSeq:null, lastSeqChange:performance.now(), age:0, replay:false, macOk:true, clean:null, observed:null };
+function expectedTarget(step,cell){ if(step>=40 && step<=70) return { x:colOf(cell)*1000, z:rowOf(cell)*1500 }; return { x:LOAD_X*1000, z:0 }; }
+function injectFaults(raw){ const o={...raw};
+  if(inj.spoof) o.x_mm=raw.x_mm+SPOOF_OFFSET;
+  if(inj.replay) o.seq=inj.frozenSeq;
+  if(inj.tamper) o.cycles=raw.cycles+7;
+  return o; }
+function signable(s){ return JSON.stringify({step:s.step,cell:s.curCell,cyc:s.cycles,x:Math.round(s.x_mm),z:Math.round(s.z_mm),f:Math.round(s.forkExt_mm),lift:s.lift,seq:s.seq}); }
+function monUpdate(raw,obs,dt){
+  const et=expectedTarget(raw.step,raw.curCell);
+  mon.mx=toward(mon.mx,et.x,sim.V.x,dt); mon.mz=toward(mon.mz,et.z,sim.V.z,dt);
+  mon.resid=Math.max(Math.abs(obs.x_mm-mon.mx),Math.abs(obs.z_mm-mon.mz));
+  mon.residT = mon.resid>TOL ? mon.residT+dt : 0;
+  mon.residTrip = mon.residT>0.25;
+  if(mon.lastSeq===null || obs.seq!==mon.lastSeq){ mon.lastSeq=obs.seq; mon.lastSeqChange=performance.now(); }
+  mon.age=performance.now()-mon.lastSeqChange;
+  mon.replay = mon.age>1000;
+  mon.clean=signable(raw); mon.observed=signable(obs);
+}
+let hmacKey=null;
+crypto.subtle.importKey('raw',new TextEncoder().encode(SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']).then(k=>hmacKey=k);
+async function hmac(str){ const sig=await crypto.subtle.sign('HMAC',hmacKey,new TextEncoder().encode(str)); return [...new Uint8Array(sig)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+setInterval(async ()=>{ if(!hmacKey||!mon.clean) return; const sent=await hmac(mon.clean); const check=await hmac(mon.observed); mon.macOk=(sent===check); },250);
+
+function ledSet(id,bad){ el(id).className='led'+(bad?' bad':''); }
+function updateDash(policy){
+  ledSet('led_ch',false); el('m_ch').textContent=policy;
+  const frBad=mon.replay; ledSet('led_fr',frBad); el('m_fr').textContent=frBad?'STALE/REPLAY':(Math.round(mon.age)+' ms');
+  const macBad=!mon.macOk; ledSet('led_mac',macBad); el('m_mac').textContent=macBad?'FAIL':'verified';
+  const resBad=mon.residTrip; ledSet('led_res',resBad); el('m_res').textContent=Math.round(mon.resid)+' mm';
+  el('residVal').textContent=Math.round(mon.resid)+' mm';
+  const pct=Math.max(0,Math.min(100, mon.resid/(TOL*2)*100));
+  const rf=el('residFill'); rf.style.width=pct+'%'; rf.classList.toggle('bad',resBad);
+  const bad=frBad||macBad||resBad;
+  const ov=el('ovBadge'); ov.textContent=bad?'COMPROMISED':'SECURE'; ov.classList.toggle('bad',bad);
+}
+
+const dot=el('dot');
+let lastWs=-1e9, wsOpen=false, wsState=null;
+function connect(){ let ws; try{ ws=new WebSocket('ws://localhost:4841'); }catch(_){ setTimeout(connect,1500); return; }
+  ws.onopen=()=>wsOpen=true; ws.onclose=()=>{ wsOpen=false; setTimeout(connect,1500); }; ws.onerror=()=>{ try{ws.close();}catch(_){}};
+  ws.onmessage=(e)=>{ lastWs=performance.now(); try{ wsState=JSON.parse(e.data); }catch(_){} }; }
+connect();
+function liveFresh(){ return wsOpen && (performance.now()-lastWs)<1500; }
+
+let sourceMode='auto'; const modes=['auto','live','demo'];
+el('modeBtn').onclick=()=>{ sourceMode=modes[(modes.indexOf(sourceMode)+1)%3]; el('modeSt').textContent=sourceMode.toUpperCase(); };
+el('orbitBtn').onclick=()=>{ controls.autoRotate=!controls.autoRotate; el('orbitSt').textContent=controls.autoRotate?'on':'off'; };
+function armBtn(id,on){ el(id).classList.toggle('armed',on); }
+el('atkSpoof').onclick=()=>{ inj.spoof=!inj.spoof; armBtn('atkSpoof',inj.spoof); };
+el('atkReplay').onclick=()=>{ inj.replay=!inj.replay; if(inj.replay) inj.frozenSeq=(wsState?.seq??demoSeq); armBtn('atkReplay',inj.replay); };
+el('atkTamper').onclick=()=>{ inj.tamper=!inj.tamper; armBtn('atkTamper',inj.tamper); };
+el('atkClear').onclick=()=>{ inj.spoof=inj.replay=inj.tamper=false; ['atkSpoof','atkReplay','atkTamper'].forEach(i=>armBtn(i,false)); };
+
+let rec=null,chunks=[];
+el('recBtn').onclick=()=>{
+  if(rec){ rec.stop(); return; }
+  const stream=renderer.domElement.captureStream(60);
+  const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm';
+  rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:12_000_000}); chunks=[];
+  rec.ondataavailable=(e)=>{ if(e.data.size) chunks.push(e.data); };
+  rec.onstop=()=>{ const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='asrs_twin_demo.webm'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),4000); rec=null; el('recBtn').classList.remove('on'); el('recSt').textContent='saved'; };
+  rec.start(); el('recBtn').classList.add('on'); el('recSt').textContent='rec…';
+};
+
+const clock=new THREE.Clock();
+function servo(c,t,v,dt){ const d=t-c,m=v*dt; return Math.abs(d)<=m?t:c+Math.sign(d)*m; }
+function animate(){
+  requestAnimationFrame(animate);
+  let dt=clock.getDelta(); if(dt>0.1) dt=0.1;
+  let raw=null, policy='—';
+  const useDemo=(sourceMode==='demo')||(sourceMode==='auto'&&!liveFresh());
+  if(useDemo){ simStep(dt); raw=simState(); dot.className='demo'; el('modeBadge').textContent='source: DEMO (self-driving)'; policy='DEMO · local model'; }
+  else if(liveFresh()){ raw=wsState; dot.className='on'; el('modeBadge').textContent='source: LIVE (PLC via bridge)'; policy='OPC UA · None/Anon'; }
+  else { dot.className=''; el('modeBadge').textContent='source: waiting for bridge…'; }
+  if(raw){ const obs=injectFaults(raw); apply(obs); monUpdate(raw,obs,dt); updateDash(policy); }
+  cur.x=servo(cur.x,tgt.x,VMAX.x,dt); cur.y=servo(cur.y,tgt.y,VMAX.y,dt); cur.fork=servo(cur.fork,tgt.fork,VMAX.fork,dt);
+  craneGroup.position.x=cur.x; carriage.position.y=cur.y; forks.position.z=cur.fork; carried.visible=carrying;
+  ghost.position.set(mon.mx*S, mon.mz*S, 0.16);
+  ghostMat.color.setHex(mon.residTrip?0xff5c6c:0x4da3ff);
+  ghostMat.emissive.setHex(mon.residTrip?0x5a0f18:0x123a66);
+  ghost.visible = mon.residTrip || Math.abs(mon.mx*S-cur.x)>0.15 || Math.abs(mon.mz*S-cur.y)>0.15;
+  for(let i=recent.length-1;i>=0;i--){ const age=(performance.now()-recent[i].t0)/1200; const mat=cellMat[recent[i].cell];
+    if(age>=1){ mat.emissive.setHex(0x000000); mat.emissiveIntensity=0; recent.splice(i,1); }
+    else { mat.emissive.setHex(0x39d98a); mat.emissiveIntensity=0.9*(1-age); } }
+  controls.update(); renderer.render(scene,camera);
+}
+animate();
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+</script>
+</body>
+</html>
