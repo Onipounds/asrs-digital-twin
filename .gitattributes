@@ -1,0 +1,26 @@
+# ---------------------------------------------------------------------------
+# GitHub Linguist overrides — make the language bar reflect the real work.
+#
+# Why: Linguist counts BYTES per file by extension, not what a file means.
+# The standalone twin is one big .html with the entire Three.js library and all
+# application JavaScript bundled INLINE, so Linguist counts ~1.7 MB of it as
+# "HTML" and the bar reads mostly-HTML. Meanwhile the PLC source (.scl) — the
+# actual engineering core — isn't recognised, so it doesn't count at all.
+# These rules fix both.
+# ---------------------------------------------------------------------------
+
+# The self-contained twin is a BUILD ARTIFACT (bundled from twin/asrs_twin_3d.html
+# + vendored Three.js). Exclude it from language stats and collapse it in diffs.
+twin/asrs_twin_3d_standalone.html linguist-generated=true
+
+# Any vendored third-party libraries (e.g. a local copy of Three.js).
+twin/vendor/**                    linguist-vendored=true
+
+# Count Siemens PLC source as real code. Linguist doesn't detect .scl by default,
+# so classify it as Structured Text (IEC 61131-3) and force it into the stats.
+*.scl  linguist-language=Structured-Text
+*.scl  linguist-detectable=true
+
+# Same for any exported ladder / STL listings, if added later.
+*.awl  linguist-language=Structured-Text
+*.stl  linguist-language=Structured-Text
