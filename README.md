@@ -9,8 +9,10 @@ telemetry in real time.
 > service → digital twin → integrity monitoring.** Not a demo *of* a product — it
 > *is* a cyber-physical-integrity product.
 
-**▶ Demo video:** [`docs/demo.mp4`](docs/demo.mp4) — a clean store cycle, then a
-spoof / tamper / replay attack tripping the integrity panel, then recovery.
+**▶ Demo video:** [`docs/demo.mp4`](docs/demo.mp4) — a clean store cycle, then three
+attacks injected in sequence, each detected and recovered: **spoofed position**
+(physics-residual trip, 3500 mm), **tampered state** (HMAC fail), and **replayed
+frame** (freshness / replay).
 *(Tip: on GitHub you can also drag this file into the README editor to embed an
 inline player.)*
 
@@ -111,11 +113,13 @@ cyber-physical integrity.
 ## Getting started
 
 ### Just the twin (no PLC needed)
+
 Open **`asrs_twin_3d_standalone.html`** in a browser. It runs in **Demo mode** —
 a self-driving crane plus the full integrity dashboard. Use the **Record** button
 to export a `.webm` clip; use the fault-inject buttons to trip the integrity panel.
 
 ### The full live pipeline
+
 1. **PLC:** in TIA Portal, generate `DB_Twin` + `FB_TwinPump` from `20_TwinData.scl`,
    call `FB_TwinPump` in `Main [OB1]`, enable the CPU's OPC UA server, and download
    to **PLCSIM Advanced** (endpoint `opc.tcp://192.168.0.1:4840`).
@@ -192,7 +196,6 @@ trust boundary) is the productionization step.
 
 ## Roadmap
 
-- Record the packaged demo video and publish.
 - Harden the OPC UA channel to **Sign & Encrypt** with X.509 certificates.
 - Move the integrity engine from the browser into the **bridge** (compute trust at
   the platform boundary), with a SIEM-style audit export.
